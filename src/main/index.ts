@@ -5,6 +5,7 @@ import { getAccount, getToken, removeCredential, saveCredential } from './store'
 import { fetchVercelDeployments, verifyVercel } from './providers/vercel'
 import { fetchRailwayDeployments, verifyRailway } from './providers/railway'
 import { enrichWithGithub, tokenFromGhCli, verifyGithub } from './providers/github'
+import { DEMO, demoConnections, demoDeployments } from './demo'
 
 const PROVIDERS: ProviderId[] = ['vercel', 'railway', 'github']
 
@@ -76,7 +77,7 @@ function createWindow(): void {
     trafficLightPosition: { x: 16, y: 18 },
     backgroundColor: '#0b0d10',
     webPreferences: {
-      preload: join(__dirname, '../preload/index.mjs'),
+      preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
       contextIsolation: true,
       nodeIntegration: false
@@ -104,11 +105,11 @@ function createWindow(): void {
 app.whenReady().then(() => {
   app.setName('Overwatcher')
 
-  ipcMain.handle('connections:get', () => PROVIDERS.map(status))
+  ipcMain.handle('connections:get', () => (DEMO ? demoConnections : PROVIDERS.map(status)))
   ipcMain.handle('connections:connect', (_e, provider: ProviderId, token: string) => connect(provider, token))
   ipcMain.handle('connections:github-cli', async () => connect('github', await tokenFromGhCli()))
   ipcMain.handle('connections:disconnect', (_e, provider: ProviderId) => removeCredential(provider))
-  ipcMain.handle('deployments:fetch', () => fetchDeployments())
+  ipcMain.handle('deployments:fetch', () => (DEMO ? demoDeployments() : fetchDeployments()))
   ipcMain.handle('shell:open', (_e, url: string) => {
     if (/^https?:\/\//.test(url)) return shell.openExternal(url)
   })
