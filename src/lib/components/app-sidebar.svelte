@@ -9,6 +9,7 @@
 	import iconLight from '#lib/assets/icon-light.png'
 	import * as Sidebar from '#lib/components/ui/sidebar/index.js'
 	import * as ToggleGroup from '#lib/components/ui/toggle-group/index.js'
+	import ProviderLogo from '#lib/components/provider-logo.svelte'
 	import StatusDot from '#lib/components/status-dot.svelte'
 	import { getConnections } from '#lib/accounts.remote.js'
 	import { getDeployments } from '#lib/deployments.remote.js'
@@ -31,12 +32,12 @@
 	})
 
 	const projects = $derived.by(() => {
-		const map = new Map<string, { key: string; name: string; scope: string; provider: string; latest: Deployment }>()
+		const map = new Map<string, { key: string; name: string; scope: string; provider: Deployment['provider']; latest: Deployment }>()
 		for (const d of deployments) {
 			if (filters.provider !== 'all' && d.provider !== filters.provider) continue
 			const key = projectKey(d)
 			if (!map.has(key)) {
-				map.set(key, { key, name: d.project, scope: d.scope, provider: d.provider === 'vercel' ? 'Vercel' : 'Railway', latest: d })
+				map.set(key, { key, name: d.project, scope: d.scope, provider: d.provider, latest: d })
 			}
 		}
 		return [...map.values()].sort((a, b) => a.name.localeCompare(b.name))
@@ -94,8 +95,8 @@
 				bind:value={() => filters.provider, (v) => v && select(() => filters.setProvider(v as ProviderFilter))}
 			>
 				<ToggleGroup.Item value="all" class="flex-1">All</ToggleGroup.Item>
-				<ToggleGroup.Item value="vercel" class="flex-1">Vercel</ToggleGroup.Item>
-				<ToggleGroup.Item value="railway" class="flex-1">Railway</ToggleGroup.Item>
+				<ToggleGroup.Item value="vercel" class="flex-1"><ProviderLogo provider="vercel" class="size-3" />Vercel</ToggleGroup.Item>
+				<ToggleGroup.Item value="railway" class="flex-1"><ProviderLogo provider="railway" class="size-3.5" />Railway</ToggleGroup.Item>
 			</ToggleGroup.Root>
 		</Sidebar.Group>
 
@@ -138,7 +139,7 @@
 							<StatusDot state={p.latest.state} />
 							<span>{p.name}</span>
 						</Sidebar.MenuButton>
-						<Sidebar.MenuBadge class="font-normal text-muted-foreground">{p.provider}</Sidebar.MenuBadge>
+						<Sidebar.MenuBadge class="text-muted-foreground"><ProviderLogo provider={p.provider} class="size-3" /></Sidebar.MenuBadge>
 					</Sidebar.MenuItem>
 				{/each}
 			</Sidebar.Menu>

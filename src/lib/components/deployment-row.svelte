@@ -6,6 +6,7 @@
 	import ScrollTextIcon from '@lucide/svelte/icons/scroll-text'
 	import { Badge } from '#lib/components/ui/badge/index.js'
 	import { Button } from '#lib/components/ui/button/index.js'
+	import ProviderLogo from '#lib/components/provider-logo.svelte'
 	import StatusDot from '#lib/components/status-dot.svelte'
 	import { duration, firstLine, STATE_LABEL, timeAgo } from '#lib/format.js'
 	import { now } from '#lib/now.svelte.js'
@@ -28,6 +29,7 @@
 
 	<div class="min-w-0">
 		<div class="flex flex-wrap items-center gap-1.5">
+			<ProviderLogo provider={d.provider} class="mr-0.5" />
 			<span class="font-semibold">{d.project}</span>
 			{#if d.service}
 				<span class="text-muted-foreground">/ {d.service}</span>
@@ -38,7 +40,6 @@
 			>
 				{d.environment}
 			</Badge>
-			<Badge variant="outline">{d.provider === 'vercel' ? 'Vercel' : 'Railway'}</Badge>
 			<span
 				class={cn('text-xs text-muted-foreground', {
 					'text-emerald-600 dark:text-emerald-400': d.state === 'ready',

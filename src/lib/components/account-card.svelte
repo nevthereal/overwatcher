@@ -30,6 +30,7 @@
 	import * as Card from '#lib/components/ui/card/index.js'
 	import { Input } from '#lib/components/ui/input/index.js'
 	import { Spinner } from '#lib/components/ui/spinner/index.js'
+	import ProviderLogo from '#lib/components/provider-logo.svelte'
 	import StatusDot from '#lib/components/status-dot.svelte'
 	import { connectAccount, connectGithubFromCli, disconnectAccount } from '#lib/accounts.remote.js'
 	import type { ConnectionStatus } from '#lib/types.js'
@@ -58,6 +59,7 @@
 <Card.Root>
 	<Card.Header>
 		<Card.Title class="flex items-center gap-2">
+			<ProviderLogo provider={status.provider} />
 			{info.name}
 			{#if info.optional}<Badge variant="secondary">Optional</Badge>{/if}
 		</Card.Title>
