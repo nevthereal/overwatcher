@@ -1,6 +1,6 @@
 <script lang="ts">
 	import './layout.css'
-	import favicon from '#lib/assets/favicon.svg'
+	import favicon from '#lib/assets/icon-light.png'
 	import { ModeWatcher } from 'mode-watcher'
 	import AppSidebar from '#lib/components/app-sidebar.svelte'
 	import DeploymentNotifier from '#lib/components/deployment-notifier.svelte'

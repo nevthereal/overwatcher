@@ -11,15 +11,18 @@
     "#lib/*": "./src/lib/*"
   },
   "scripts": {
-    "dev": "tsc -p electron && OVERWATCHER_DEV=1 electron .",
-    "demo": "tsc -p electron && OVERWATCHER_DEV=1 OVERWATCHER_DEMO=1 electron .",
+    "dev": "node scripts/brand-dev-electron.mjs && tsc -p electron && OVERWATCHER_DEV=1 electron .",
+    "demo": "node scripts/brand-dev-electron.mjs && tsc -p electron && OVERWATCHER_DEV=1 OVERWATCHER_DEMO=1 electron .",
     "build": "vite build && tsc -p electron",
     "start": "electron .",
     "prepare": "svelte-kit sync || echo ''",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json && tsc -p electron --noEmit",
-    "dist": "bun run build && electron-builder --mac"
+    "dist": "bun run build && electron-builder --mac",
+    "postinstall": "node scripts/brand-dev-electron.mjs"
   },
-  "trustedDependencies": ["electron"],
+  "trustedDependencies": [
+    "electron"
+  ],
   "devDependencies": {
     "@fontsource-variable/geist": "^5.3.0",
     "@internationalized/date": "^3.12.0",
@@ -52,16 +55,28 @@
       "buildResources": "resources",
       "output": "dist"
     },
-    "files": ["out/**/*", "package.json"],
+    "files": [
+      "out/**/*",
+      "package.json"
+    ],
     "mac": {
       "category": "public.app-category.developer-tools",
-      "target": ["dmg", "zip"]
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "icon": "resources/Overwatcher.icon",
+      "darkModeSupport": true
     },
     "linux": {
-      "target": ["AppImage"]
+      "target": [
+        "AppImage"
+      ]
     },
     "win": {
-      "target": ["nsis"]
+      "target": [
+        "nsis"
+      ]
     }
   }
 }

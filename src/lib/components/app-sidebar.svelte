@@ -5,6 +5,8 @@
 	import KeyRoundIcon from '@lucide/svelte/icons/key-round'
 	import LayersIcon from '@lucide/svelte/icons/layers'
 	import LoaderIcon from '@lucide/svelte/icons/loader'
+	import iconDark from '#lib/assets/icon-dark.png'
+	import iconLight from '#lib/assets/icon-light.png'
 	import * as Sidebar from '#lib/components/ui/sidebar/index.js'
 	import * as ToggleGroup from '#lib/components/ui/toggle-group/index.js'
 	import StatusDot from '#lib/components/status-dot.svelte'
@@ -57,7 +59,8 @@
 <Sidebar.Root collapsible="none" class="h-svh border-r">
 	<Sidebar.Header class="drag-region pt-11">
 		<div class="flex items-center gap-2 px-2 font-semibold">
-			<span class="grid size-6 place-items-center rounded-md bg-cyan-600 text-xs text-white">O</span>
+			<img src={iconLight} alt="" class="size-6 dark:hidden" />
+			<img src={iconDark} alt="" class="hidden size-6 dark:block" />
 			Overwatcher
 		</div>
 	</Sidebar.Header>

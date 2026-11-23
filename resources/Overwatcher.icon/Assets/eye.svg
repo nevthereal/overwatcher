@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 285" width="520" height="285">
+  <g fill="#1a1a1a">
+    <!-- eyebrow: mirror-symmetric around x = 260 -->
+    <path d="
+      M18 124 Q10 124, 10 114
+      C12 62, 121 10, 260 10
+      C399 10, 508 62, 510 114
+      Q510 124, 502 124 L438 124
+      C434 106, 421 92, 406 82
+      C371 54, 321 42, 260 42
+      C199 42, 149 54, 114 82
+      C99 92, 86 106, 82 124 Z"/>
+    <!-- eye ring: concentric ellipses centred at (260, 190) -->
+    <path fill-rule="evenodd" d="
+      M88 190 a172 85 0 1 0 344 0 a172 85 0 1 0 -344 0 Z
+      M136 190 a124 53 0 1 0 248 0 a124 53 0 1 0 -248 0 Z"/>
+    <!-- pupil: same centre -->
+    <ellipse cx="260" cy="190" rx="21" ry="31"/>
+  </g>
+</svg>

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, safeStorage, session, shell } from 'electron'
+import { app, BrowserWindow, nativeImage, nativeTheme, safeStorage, session, shell } from 'electron'
 import { randomBytes } from 'node:crypto'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import type { AddressInfo } from 'node:net'
@@ -106,7 +106,22 @@ async function createWindow(url: string): Promise<void> {
 	await win.loadURL(url)
 }
 
+/**
+ * In development the Dock shows the stock Electron.app bundle, so set our icon at runtime and
+ * follow light/dark mode. Packaged builds use the Icon Composer icon, which macOS themes itself.
+ */
+function useDevDockIcon(): void {
+	if (!dev || !app.dock) return
+	const apply = () => {
+		const variant = nativeTheme.shouldUseDarkColors ? 'dark' : 'light'
+		app.dock?.setIcon(nativeImage.createFromPath(join(root, 'resources/dock', `${variant}.png`)))
+	}
+	apply()
+	nativeTheme.on('updated', apply)
+}
+
 app.whenReady().then(async () => {
+	useDevDockIcon()
 	const url = await startServer()
 	await createWindow(url)
 	app.on('activate', () => {
