@@ -24,10 +24,19 @@ Open **Accounts** in the bottom-left corner and paste a token for each platform.
 
 ```sh
 bun install
-bun run dev        # run the app with hot reload
-bun run demo       # run with fixture data, no tokens needed
-bun run typecheck
-bun run dist       # build a macOS .dmg / .zip into dist/
+bun run dev        # Electron + Vite dev server with hot reload
+bun run demo       # same, with fixture data (no tokens needed)
+bun run check      # svelte-check + type-check the Electron main process
+bun run build      # production build into out/
+bun run start      # run the production build
+bun run dist       # package a macOS .dmg / .zip into dist/
 ```
 
-Built with Electron, React and TypeScript via electron-vite. All API calls happen in the main process (`src/main/providers/`); the renderer talks to it over a small IPC bridge (`src/preload/`).
+### How it fits together
+
+Overwatcher is a SvelteKit 3 app ([async Svelte](https://svelte.dev/docs/svelte/await-expressions), [remote functions](https://svelte.dev/docs/kit/remote-functions), [shadcn-svelte](https://shadcn-svelte.com)) running inside Electron:
+
+- **`electron/main.ts`** starts the SvelteKit server *inside the Electron main process* on `127.0.0.1`: Vite's dev server in development, the `adapter-node` handler in production. The window then loads it. The server reaches Electron only through a small host object on `globalThis` (keychain encryption, data directory), see `src/lib/server/host.ts`.
+- **Remote functions** in `src/lib/*.remote.ts` are the API. `getDeployments` is a `query.live` that polls Vercel and Railway on the server (every 10s while something is building, otherwise every 60s) and streams results to the window. Account management uses `form`s with server-side validation.
+- **Provider integrations** live in `src/lib/server/providers/`.
+- **Security:** the local server only accepts requests that carry a random per-launch session cookie, which Electron sets for its own window (`src/hooks.server.ts`). Tokens never reach the renderer.
