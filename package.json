@@ -10,9 +10,12 @@
     "build": "electron-vite build",
     "preview": "electron-vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "dist": "electron-vite build && electron-builder --mac"
+    "dist": "electron-vite build && electron-builder --mac",
+    "demo": "OVERWATCHER_DEMO=1 electron-vite dev"
   },
-  "trustedDependencies": ["electron"],
+  "trustedDependencies": [
+    "electron"
+  ],
   "dependencies": {
     "react": "^19.3.1",
     "react-dom": "^19.3.1"
@@ -27,5 +30,34 @@
     "electron-vite": "^6.0.0",
     "typescript": "^7.0.2",
     "vite": "^8.3.8"
+  },
+  "build": {
+    "appId": "dev.overwatcher.app",
+    "productName": "Overwatcher",
+    "directories": {
+      "buildResources": "build",
+      "output": "dist"
+    },
+    "files": [
+      "out/**/*",
+      "package.json"
+    ],
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "target": [
+        "dmg",
+        "zip"
+      ]
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ]
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    }
   }
 }
