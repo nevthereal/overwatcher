@@ -31,7 +31,28 @@ export async function connect(provider: ProviderId, token: string): Promise<stri
 
 const message = (err: unknown) => (err instanceof Error ? err.message : String(err))
 
-export async function fetchAllDeployments(): Promise<FetchResult> {
+let cached: FetchResult | undefined
+let inflight: Promise<FetchResult> | undefined
+
+/**
+ * Shared by the window's live query and the menu bar, so both never poll the providers
+ * separately. Returns the cached result if it is younger than `maxAgeMs`, and joins an
+ * in-flight fetch rather than starting another one.
+ */
+export function getDeployments(maxAgeMs: number): Promise<FetchResult> {
+	if (cached && Date.now() - cached.fetchedAt < maxAgeMs) return Promise.resolve(cached)
+	inflight ??= fetchAllDeployments()
+		.then((result) => (cached = result))
+		.finally(() => (inflight = undefined))
+	return inflight
+}
+
+/** Forces the next `getDeployments` call to hit the providers, e.g. after an account change. */
+export function invalidateDeployments(): void {
+	cached = undefined
+}
+
+async function fetchAllDeployments(): Promise<FetchResult> {
 	if (host().demo) return demoDeployments()
 
 	const errors: ProviderError[] = []

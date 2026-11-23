@@ -1,9 +1,10 @@
-import { app, BrowserWindow, nativeImage, nativeTheme, safeStorage, session, shell } from 'electron'
+import { app, BrowserWindow, Notification, nativeImage, nativeTheme, powerMonitor, safeStorage, session, shell } from 'electron'
 import { randomBytes } from 'node:crypto'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import { MenuBar } from './menu-bar.js'
 
 /** Must match src/lib/server/host.ts */
 interface OverwatcherHost {
@@ -23,6 +24,12 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
 const dev = process.env.OVERWATCHER_DEV === '1' && !app.isPackaged
 
 app.setName('Overwatcher')
+// Keep development data (tokens, single-instance lock) apart from the installed app.
+if (dev) app.setPath('userData', join(app.getPath('appData'), 'Overwatcher Dev'))
+
+if (!app.requestSingleInstanceLock()) {
+	app.exit(0)
+}
 
 // The SvelteKit server runs in this process and reaches Electron only through this object.
 globalThis.__overwatcherHost = {
@@ -62,9 +69,15 @@ async function startServer(): Promise<string> {
 	return `${origin}/`
 }
 
-async function createWindow(url: string): Promise<void> {
+let serverUrl = ''
+let mainWindow: BrowserWindow | undefined
+/** True only when quitting for real (menu bar "Quit", logout, shutdown). */
+let quitting = false
+let toldAboutMenuBar = false
+
+async function createWindow(path = '/'): Promise<void> {
 	await session.defaultSession.cookies.set({
-		url,
+		url: serverUrl,
 		name: SESSION_COOKIE,
 		value: globalThis.__overwatcherHost!.secret,
 		httpOnly: true,
@@ -83,10 +96,13 @@ async function createWindow(url: string): Promise<void> {
 		backgroundColor: '#09090b',
 		webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true }
 	})
-
+	mainWindow = win
+	win.on('closed', () => {
+		if (mainWindow === win) mainWindow = undefined
+	})
 	win.once('ready-to-show', () => win.show())
 
-	const origin = new URL(url).origin
+	const origin = new URL(serverUrl).origin
 	const openOutside = (target: string) => {
 		if (/^https?:\/\//.test(target)) void shell.openExternal(target)
 	}
@@ -103,7 +119,42 @@ async function createWindow(url: string): Promise<void> {
 		}
 	})
 
-	await win.loadURL(url)
+	await win.loadURL(new URL(path, serverUrl).href)
+}
+
+/** Brings the app back to the foreground (Dock icon included) and shows the window. */
+function openWindow(path?: string): void {
+	void app.dock?.show()
+	if (!mainWindow) {
+		void createWindow(path)
+		return
+	}
+	if (path) void mainWindow.loadURL(new URL(path, serverUrl).href)
+	if (mainWindow.isMinimized()) mainWindow.restore()
+	mainWindow.show()
+	mainWindow.focus()
+}
+
+/**
+ * Quitting from the Dock or with Cmd-Q only closes the window and hides the Dock icon;
+ * Overwatcher keeps watching from the menu bar until "Quit Overwatcher" is chosen there.
+ */
+function moveToMenuBar(): void {
+	for (const win of BrowserWindow.getAllWindows()) win.destroy()
+	app.dock?.hide()
+	if (!toldAboutMenuBar && Notification.isSupported()) {
+		toldAboutMenuBar = true
+		new Notification({
+			title: 'Overwatcher is still running',
+			body: 'It keeps watching your deployments from the menu bar. Choose Quit Overwatcher there to exit.',
+			silent: true
+		}).show()
+	}
+}
+
+function quitForReal(): void {
+	quitting = true
+	app.quit()
 }
 
 /**
@@ -122,13 +173,35 @@ function useDevDockIcon(): void {
 
 app.whenReady().then(async () => {
 	useDevDockIcon()
-	const url = await startServer()
-	await createWindow(url)
-	app.on('activate', () => {
-		if (BrowserWindow.getAllWindows().length === 0) void createWindow(url)
+	serverUrl = await startServer()
+
+	new MenuBar({
+		serverUrl,
+		cookie: `${SESSION_COOKIE}=${globalThis.__overwatcherHost!.secret}`,
+		resourcesDir: join(root, 'resources'),
+		openWindow,
+		quit: quitForReal
 	})
+
+	await createWindow()
+
+	// Dock icon clicked, or the app launched again while running in the menu bar.
+	app.on('activate', () => openWindow())
+	app.on('second-instance', () => openWindow())
 })
 
+app.on('before-quit', (event) => {
+	if (quitting || process.platform !== 'darwin') return
+	event.preventDefault()
+	moveToMenuBar()
+})
+
+// Never block logout, restart or shutdown.
+powerMonitor.on('shutdown', () => {
+	quitting = true
+})
+
+// On macOS closing the last window keeps the app (and its menu bar item) running.
 app.on('window-all-closed', () => {
 	if (process.platform !== 'darwin') app.quit()
 })

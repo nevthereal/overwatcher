@@ -57,6 +57,7 @@
     },
     "files": [
       "out/**/*",
+      "resources/tray/**",
       "package.json"
     ],
     "mac": {

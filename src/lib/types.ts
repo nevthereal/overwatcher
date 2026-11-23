@@ -73,3 +73,30 @@ export interface FetchResult {
 }
 
 export const isActive = (s: DeploymentState) => s === 'queued' || s === 'building'
+
+/** One row in the macOS menu bar menu. Mirrored in electron/menu-bar.ts. */
+export interface MenuBarItem {
+  key: string
+  provider: 'vercel' | 'railway'
+  /** "project" or "project / service" */
+  name: string
+  environment: string
+  isProduction: boolean
+  state: DeploymentState
+  createdAt: number
+  message?: string
+  branch?: string
+  sha?: string
+  commitUrl?: string
+  pr?: PullRequestInfo
+  url?: string
+  dashboardUrl?: string
+}
+
+export interface MenuBarSummary {
+  connected: boolean
+  fetchedAt: number
+  errors: ProviderError[]
+  /** Newest deployment per project, service and environment, newest first. */
+  targets: MenuBarItem[]
+}

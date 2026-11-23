@@ -3,7 +3,6 @@
 	import favicon from '#lib/assets/icon-light.png'
 	import { ModeWatcher } from 'mode-watcher'
 	import AppSidebar from '#lib/components/app-sidebar.svelte'
-	import DeploymentNotifier from '#lib/components/deployment-notifier.svelte'
 	import * as Alert from '#lib/components/ui/alert/index.js'
 	import { Button } from '#lib/components/ui/button/index.js'
 	import * as Sidebar from '#lib/components/ui/sidebar/index.js'
@@ -27,7 +26,6 @@
 
 <ModeWatcher />
 <Toaster position="bottom-right" />
-<DeploymentNotifier />
 
 <Sidebar.Provider class="h-svh overflow-hidden">
 	<AppSidebar />

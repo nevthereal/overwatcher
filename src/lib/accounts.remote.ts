@@ -1,7 +1,7 @@
 import * as v from 'valibot'
 import { invalid } from '@sveltejs/kit'
 import { command, form, query } from '$app/server'
-import { connect, connectionStatuses } from '#lib/server/deployments.js'
+import { connect, connectionStatuses, invalidateDeployments } from '#lib/server/deployments.js'
 import { host } from '#lib/server/host.js'
 import { tokenFromGhCli } from '#lib/server/providers/github.js'
 import { removeCredential } from '#lib/server/store.js'
@@ -14,6 +14,7 @@ const message = (err: unknown) => (err instanceof Error ? err.message : String(e
 export const getConnections = query(async () => connectionStatuses())
 
 function afterChange() {
+	invalidateDeployments()
 	void getConnections().refresh()
 	getDeployments().reconnect()
 }

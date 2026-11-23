@@ -9,6 +9,7 @@ A desktop app that shows your latest **Vercel** and **Railway** deployments in o
 - Filter by status (in progress / failed), platform, environment (production / preview) and project, or search across commits, branches and PRs
 - "Latest only" view: the newest deployment per project, service and environment
 - Refreshes every 60s, every 10s while something is building, and sends a system notification when a deployment finishes or fails
+- Menu bar item with what's in progress, what's failing, every production deployment and recent previews, each with links to the deployment, logs, commit and PR. Quitting from the Dock (or Cmd-Q) keeps Overwatcher running there; choose **Quit Overwatcher** in the menu bar to exit
 
 ## Connecting accounts
 
@@ -38,5 +39,6 @@ Overwatcher is a SvelteKit 3 app ([async Svelte](https://svelte.dev/docs/svelte/
 
 - **`electron/main.ts`** starts the SvelteKit server *inside the Electron main process* on `127.0.0.1`: Vite's dev server in development, the `adapter-node` handler in production. The window then loads it. The server reaches Electron only through a small host object on `globalThis` (keychain encryption, data directory), see `src/lib/server/host.ts`.
 - **Remote functions** in `src/lib/*.remote.ts` are the API. `getDeployments` is a `query.live` that polls Vercel and Railway on the server (every 10s while something is building, otherwise every 60s) and streams results to the window. Account management uses `form`s with server-side validation.
-- **Provider integrations** live in `src/lib/server/providers/`.
+- **Provider integrations** live in `src/lib/server/providers/`. Results are cached in `src/lib/server/deployments.ts` so the window and the menu bar share one poller.
+- **Menu bar** (`electron/menu-bar.ts`) reads `GET /api/menu-bar` from the local server and owns deployment notifications, so they keep working while the window is closed.
 - **Security:** the local server only accepts requests that carry a random per-launch session cookie, which Electron sets for its own window (`src/hooks.server.ts`). Tokens never reach the renderer.
