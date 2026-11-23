@@ -72,11 +72,4 @@ export interface FetchResult {
   fetchedAt: number
 }
 
-export interface OverwatcherApi {
-  getConnections(): Promise<ConnectionStatus[]>
-  connect(provider: ProviderId, token: string): Promise<ConnectionStatus>
-  connectGithubFromCli(): Promise<ConnectionStatus>
-  disconnect(provider: ProviderId): Promise<void>
-  fetchDeployments(): Promise<FetchResult>
-  openExternal(url: string): Promise<void>
-}
+export const isActive = (s: DeploymentState) => s === 'queued' || s === 'building'

@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process'
 import { existsSync } from 'node:fs'
-import type { Deployment, PullRequestInfo } from '../../shared/types'
+import type { Deployment, PullRequestInfo } from '#lib/types.js'
 
 const API = 'https://api.github.com'
 const CONCURRENCY = 6

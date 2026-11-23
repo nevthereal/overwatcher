@@ -1,4 +1,4 @@
-import type { ConnectionStatus, Deployment, FetchResult } from '../shared/types'
+import type { ConnectionStatus, Deployment, FetchResult } from '#lib/types.js'
 
 /** Fake data for working on the UI without real tokens: `OVERWATCHER_DEMO=1 bun run dev`. */
 export const DEMO = process.env.OVERWATCHER_DEMO === '1'

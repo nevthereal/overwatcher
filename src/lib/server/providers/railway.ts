@@ -1,4 +1,4 @@
-import type { Deployment, DeploymentState } from '../../shared/types'
+import type { Deployment, DeploymentState } from '#lib/types.js'
 
 const API = 'https://backboard.railway.com/graphql/v2'
 const PER_PROJECT = 20

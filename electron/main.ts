@@ -1,125 +1,119 @@
-import { app, BrowserWindow, ipcMain, shell } from 'electron'
-import { join } from 'node:path'
-import type { ConnectionStatus, Deployment, FetchResult, ProviderError, ProviderId } from '../shared/types'
-import { getAccount, getToken, removeCredential, saveCredential } from './store'
-import { fetchVercelDeployments, verifyVercel } from './providers/vercel'
-import { fetchRailwayDeployments, verifyRailway } from './providers/railway'
-import { enrichWithGithub, tokenFromGhCli, verifyGithub } from './providers/github'
-import { DEMO, demoConnections, demoDeployments } from './demo'
+import { app, BrowserWindow, safeStorage, session, shell } from 'electron'
+import { randomBytes } from 'node:crypto'
+import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
+import type { AddressInfo } from 'node:net'
+import { dirname, join } from 'node:path'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
-const PROVIDERS: ProviderId[] = ['vercel', 'railway', 'github']
-
-const verifiers: Record<ProviderId, (token: string) => Promise<string>> = {
-  vercel: verifyVercel,
-  railway: verifyRailway,
-  github: verifyGithub
+/** Must match src/lib/server/host.ts */
+interface OverwatcherHost {
+	encrypt(plain: string): string
+	decrypt(base64: string): string
+	dataDir: string
+	secret: string
+	demo: boolean
 }
 
-function status(provider: ProviderId): ConnectionStatus {
-  const token = getToken(provider)
-  return { provider, connected: !!token, account: token ? getAccount(provider) : undefined }
+declare global {
+	var __overwatcherHost: OverwatcherHost | undefined
 }
 
-async function connect(provider: ProviderId, token: string): Promise<ConnectionStatus> {
-  const trimmed = token.trim()
-  if (!trimmed) throw new Error('Token is empty')
-  const account = await verifiers[provider](trimmed)
-  saveCredential(provider, trimmed, account)
-  return { provider, connected: true, account }
+const SESSION_COOKIE = 'overwatcher_session'
+const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
+const dev = process.env.OVERWATCHER_DEV === '1' && !app.isPackaged
+
+app.setName('Overwatcher')
+
+// The SvelteKit server runs in this process and reaches Electron only through this object.
+globalThis.__overwatcherHost = {
+	encrypt(plain) {
+		if (!safeStorage.isEncryptionAvailable()) {
+			throw new Error('OS encryption is unavailable, refusing to store the token in plain text.')
+		}
+		return safeStorage.encryptString(plain).toString('base64')
+	},
+	decrypt: (base64) => safeStorage.decryptString(Buffer.from(base64, 'base64')),
+	dataDir: app.getPath('userData'),
+	secret: randomBytes(32).toString('hex'),
+	demo: process.env.OVERWATCHER_DEMO === '1'
 }
 
-const errorMessage = (err: unknown) => (err instanceof Error ? err.message : String(err))
+/** Starts SvelteKit on 127.0.0.1 and returns its URL. */
+async function startServer(): Promise<string> {
+	if (dev) {
+		const { createServer: createViteServer } = await import('vite')
+		const vite = await createViteServer({ root, server: { host: '127.0.0.1' } })
+		await vite.listen()
+		const url = vite.resolvedUrls?.local[0]
+		if (!url) throw new Error('Vite dev server did not report a URL')
+		return url
+	}
 
-async function fetchDeployments(): Promise<FetchResult> {
-  const errors: ProviderError[] = []
-  const deployments: Deployment[] = []
+	type Handler = (req: IncomingMessage, res: ServerResponse) => void
+	let handler: Handler | undefined
+	const server = createServer((req, res) => handler!(req, res))
+	await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+	const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
 
-  const sources: [ProviderId, (t: string) => Promise<Deployment[]>][] = [
-    ['vercel', fetchVercelDeployments],
-    ['railway', fetchRailwayDeployments]
-  ]
-
-  await Promise.all(
-    sources.map(async ([provider, fetcher]) => {
-      const token = getToken(provider)
-      if (!token) return
-      try {
-        deployments.push(...(await fetcher(token)))
-      } catch (err) {
-        errors.push({ provider, message: errorMessage(err) })
-      }
-    })
-  )
-
-  deployments.sort((a, b) => b.createdAt - a.createdAt)
-
-  const ghToken = getToken('github')
-  if (ghToken) {
-    try {
-      await enrichWithGithub(ghToken, deployments)
-    } catch (err) {
-      errors.push({ provider: 'github', message: errorMessage(err) })
-    }
-  }
-
-  return { deployments, errors, fetchedAt: Date.now() }
+	// adapter-node reads ORIGIN when the handler module loads, and otherwise assumes https,
+	// which would fail SvelteKit's CSRF check for form and remote function calls.
+	process.env.ORIGIN = origin
+	;({ handler } = (await import(pathToFileURL(join(root, 'out/web/handler.js')).href)) as { handler: Handler })
+	return `${origin}/`
 }
 
-function createWindow(): void {
-  const win = new BrowserWindow({
-    width: 1180,
-    height: 780,
-    minWidth: 720,
-    minHeight: 480,
-    show: false,
-    title: 'Overwatcher',
-    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
-    trafficLightPosition: { x: 16, y: 18 },
-    backgroundColor: '#0b0d10',
-    webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
-      sandbox: false,
-      contextIsolation: true,
-      nodeIntegration: false
-    }
-  })
+async function createWindow(url: string): Promise<void> {
+	await session.defaultSession.cookies.set({
+		url,
+		name: SESSION_COOKIE,
+		value: globalThis.__overwatcherHost!.secret,
+		httpOnly: true,
+		sameSite: 'strict'
+	})
 
-  win.once('ready-to-show', () => win.show())
+	const win = new BrowserWindow({
+		width: 1180,
+		height: 780,
+		minWidth: 760,
+		minHeight: 480,
+		show: false,
+		title: 'Overwatcher',
+		titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
+		trafficLightPosition: { x: 14, y: 14 },
+		backgroundColor: '#09090b',
+		webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true }
+	})
 
-  // Every link opens in the user's browser, never inside the app.
-  win.webContents.setWindowOpenHandler(({ url }) => {
-    if (/^https?:\/\//.test(url)) void shell.openExternal(url)
-    return { action: 'deny' }
-  })
-  win.webContents.on('will-navigate', (e, url) => {
-    if (url !== win.webContents.getURL()) {
-      e.preventDefault()
-      if (/^https?:\/\//.test(url)) void shell.openExternal(url)
-    }
-  })
+	win.once('ready-to-show', () => win.show())
 
-  if (process.env.ELECTRON_RENDERER_URL) void win.loadURL(process.env.ELECTRON_RENDERER_URL)
-  else void win.loadFile(join(__dirname, '../renderer/index.html'))
+	const origin = new URL(url).origin
+	const openOutside = (target: string) => {
+		if (/^https?:\/\//.test(target)) void shell.openExternal(target)
+	}
+
+	// Links to other sites open in the user's browser, never inside the app.
+	win.webContents.setWindowOpenHandler(({ url: target }) => {
+		openOutside(target)
+		return { action: 'deny' }
+	})
+	win.webContents.on('will-navigate', (event, target) => {
+		if (new URL(target).origin !== origin) {
+			event.preventDefault()
+			openOutside(target)
+		}
+	})
+
+	await win.loadURL(url)
 }
 
-app.whenReady().then(() => {
-  app.setName('Overwatcher')
-
-  ipcMain.handle('connections:get', () => (DEMO ? demoConnections : PROVIDERS.map(status)))
-  ipcMain.handle('connections:connect', (_e, provider: ProviderId, token: string) => connect(provider, token))
-  ipcMain.handle('connections:github-cli', async () => connect('github', await tokenFromGhCli()))
-  ipcMain.handle('connections:disconnect', (_e, provider: ProviderId) => removeCredential(provider))
-  ipcMain.handle('deployments:fetch', () => (DEMO ? demoDeployments() : fetchDeployments()))
-  ipcMain.handle('shell:open', (_e, url: string) => {
-    if (/^https?:\/\//.test(url)) return shell.openExternal(url)
-  })
-
-  createWindow()
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
-  })
+app.whenReady().then(async () => {
+	const url = await startServer()
+	await createWindow(url)
+	app.on('activate', () => {
+		if (BrowserWindow.getAllWindows().length === 0) void createWindow(url)
+	})
 })
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit()
+	if (process.platform !== 'darwin') app.quit()
 })
