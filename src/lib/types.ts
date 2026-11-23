@@ -100,3 +100,7 @@ export interface MenuBarSummary {
   /** Newest deployment per project, service and environment, newest first. */
   targets: MenuBarItem[]
 }
+
+/** The Railway service name, unless it just repeats the project name. */
+export const serviceLabel = (d: Pick<Deployment, 'project' | 'service'>) =>
+  d.service && d.service.toLowerCase() !== d.project.toLowerCase() ? d.service : undefined

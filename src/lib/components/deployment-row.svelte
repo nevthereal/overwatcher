@@ -10,7 +10,7 @@
 	import StatusDot from '#lib/components/status-dot.svelte'
 	import { duration, firstLine, STATE_LABEL, timeAgo } from '#lib/format.js'
 	import { now } from '#lib/now.svelte.js'
-	import type { Deployment } from '#lib/types.js'
+	import { serviceLabel, type Deployment } from '#lib/types.js'
 	import { cn } from '#lib/utils.js'
 
 	let { deployment: d }: { deployment: Deployment } = $props()
@@ -19,6 +19,7 @@
 		d.state === 'ready' || d.state === 'error' ? duration(d.createdAt, d.updatedAt) : undefined
 	)
 	const author = $derived(d.commit?.author ?? d.creator)
+	const service = $derived(serviceLabel(d))
 	const chip = 'inline-flex max-w-72 items-center gap-1 truncate rounded-md bg-muted px-1.5 py-0.5 text-muted-foreground'
 </script>
 
@@ -31,8 +32,8 @@
 		<div class="flex flex-wrap items-center gap-1.5">
 			<ProviderLogo provider={d.provider} class="mr-0.5" />
 			<span class="font-semibold">{d.project}</span>
-			{#if d.service}
-				<span class="text-muted-foreground">/ {d.service}</span>
+			{#if service}
+				<span class="text-muted-foreground">/ {service}</span>
 			{/if}
 			<Badge
 				variant={d.isProduction ? 'default' : 'secondary'}

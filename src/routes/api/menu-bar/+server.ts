@@ -1,12 +1,12 @@
 import { connectionStatuses, getDeployments } from '#lib/server/deployments.js'
 import type { MenuBarItem, MenuBarSummary } from '#lib/types.js'
-import type { Deployment } from '#lib/types.js'
+import { serviceLabel, type Deployment } from '#lib/types.js'
 import type { RequestHandler } from './$types'
 
 const toItem = (d: Deployment): MenuBarItem => ({
 	key: d.key,
 	provider: d.provider,
-	name: d.service ? `${d.project} / ${d.service}` : d.project,
+	name: serviceLabel(d) ? `${d.project} / ${d.service}` : d.project,
 	environment: d.environment,
 	isProduction: d.isProduction,
 	state: d.state,
