@@ -1,5 +1,9 @@
 node_modules
 out
 dist
+/.svelte-kit
 .DS_Store
 *.log
+.env
+.env.*
+vite.config.ts.timestamp-*
