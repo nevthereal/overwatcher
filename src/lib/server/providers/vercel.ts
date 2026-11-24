@@ -123,9 +123,19 @@ function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1)
 }
 
-export async function fetchVercelDeployments(token: string): Promise<Deployment[]> {
+const message = (err: unknown) => (err instanceof Error ? err.message : String(err))
+
+/**
+ * Deployments from the personal scope and every team. A team that fails doesn't hide the others:
+ * its error comes back in `warnings`, so the feed can say what's missing.
+ */
+export async function fetchVercelDeployments(token: string): Promise<{ deployments: Deployment[]; warnings: string[] }> {
+  const warnings: string[] = []
   const [{ teams }, accountName] = await Promise.all([
-    vercel<{ teams: VercelTeam[] }>(token, '/v2/teams', { limit: '100' }).catch(() => ({ teams: [] })),
+    vercel<{ teams: VercelTeam[] }>(token, '/v2/teams', { limit: '100' }).catch((err) => {
+      warnings.push(`Could not list teams, showing personal deployments only. ${message(err)}`)
+      return { teams: [] as VercelTeam[] }
+    }),
     verifyVercel(token)
   ])
 
@@ -149,14 +159,15 @@ export async function fetchVercelDeployments(token: string): Promise<Deployment[
 
   const seen = new Map<string, Deployment>()
   const failures: string[] = []
-  for (const r of results) {
+  results.forEach((r, i) => {
     if (r.status === 'rejected') {
-      failures.push(String(r.reason?.message ?? r.reason))
-      continue
+      failures.push(`${scopes[i].label}: ${message(r.reason)}`)
+      return
     }
     // Team-scoped results win over the unscoped call, since they carry the right label.
     for (const d of r.value) seen.set(d.key, d)
-  }
-  if (seen.size === 0 && failures.length > 0) throw new Error(failures[0])
-  return [...seen.values()]
+  })
+  if (seen.size === 0 && failures.length > 0) throw new Error(failures.join('; '))
+  if (failures.length > 0) warnings.push(`Some scopes could not be loaded. ${failures.join('; ')}`)
+  return { deployments: [...seen.values()], warnings }
 }

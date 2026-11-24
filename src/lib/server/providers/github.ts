@@ -21,8 +21,17 @@ async function gh<T>(token: string, path: string): Promise<T | null> {
     }
   })
   if (res.status === 404 || res.status === 422) return null
-  if (!res.ok) throw new Error(`GitHub API ${res.status}: ${res.statusText}`)
+  if (!res.ok) throw new GithubError(res.status, `GitHub API ${res.status}: ${res.statusText}`)
   return (await res.json()) as T
+}
+
+class GithubError extends Error {
+  constructor(
+    readonly status: number,
+    message: string
+  ) {
+    super(message)
+  }
 }
 
 export async function verifyGithub(token: string): Promise<string> {
@@ -83,21 +92,31 @@ async function pool<T>(items: T[], fn: (item: T) => Promise<void>): Promise<void
 }
 
 /**
- * Fills in PR numbers, titles and states from GitHub. Mutates the given deployments.
- * Deployments on non-GitHub repos are left untouched.
+ * Fills in PR numbers, titles and states from GitHub. Mutates the given deployments, keeping
+ * whatever it found before a failure. Deployments on non-GitHub repos are left untouched.
+ *
+ * Throws the first error after the lookups, so the feed can show it. A rejected token (401) or a
+ * rate limit (403, 429) stops the remaining lookups, since they would fail the same way.
  */
 export async function enrichWithGithub(token: string, deployments: Deployment[]): Promise<void> {
   const targets = deployments.filter((d) => d.commit?.repo && d.commit.url?.startsWith('https://github.com/'))
-  let rateLimited = false
+  let firstError: unknown
+  let stop = false
 
   await pool(targets, async (d) => {
-    if (rateLimited) return
+    if (stop) return
     const repo = d.commit!.repo!
     try {
       const pr = d.pr ? await prDetails(token, repo, d.pr.number) : await prForCommit(token, repo, d.commit!.sha)
       if (pr) d.pr = { ...d.pr, ...pr }
     } catch (err) {
-      if (String(err).includes('403') || String(err).includes('429')) rateLimited = true
+      firstError ??= err
+      if (err instanceof GithubError && [401, 403, 429].includes(err.status)) stop = true
     }
   })
+
+  if (firstError instanceof GithubError && firstError.status === 401) {
+    throw new Error('GitHub rejected the token. Reconnect GitHub on the Accounts page.')
+  }
+  if (firstError) throw firstError
 }

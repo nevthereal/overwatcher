@@ -79,7 +79,7 @@
 </PageHeader>
 
 <div class="min-h-0 flex-1 overflow-y-auto px-4 pb-8">
-	{#each result.errors as e (e.provider)}
+	{#each result.errors as e (`${e.provider}:${e.message}`)}
 		<Alert.Root variant="destructive" class="mt-3">
 			<Alert.Title class="capitalize">{e.provider}</Alert.Title>
 			<Alert.Description class="select-text">{e.message}</Alert.Description>

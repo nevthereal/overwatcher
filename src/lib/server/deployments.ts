@@ -32,27 +32,67 @@ export async function connect(userId: string, provider: ProviderId, token: strin
 
 const message = (err: unknown) => (err instanceof Error ? err.message : String(err))
 
+interface CacheEntry {
+	result?: FetchResult
+	inflight?: Promise<FetchResult>
+	/** Bumped by `invalidateDeployments`, so a fetch started before an account change is discarded. */
+	generation: number
+	lastUsed: number
+}
+
 /** Per user: every open tab of that user shares one poller, and users never share results. */
-const cache = new Map<string, { result?: FetchResult; inflight?: Promise<FetchResult> }>()
+const cache = new Map<string, CacheEntry>()
+
+/** Entries nobody asked for in this long are dropped. Open tabs poll at least once a minute. */
+const IDLE_MS = 5 * 60_000
+let lastPrune = 0
+
+function prune(now: number): void {
+	if (now - lastPrune < 60_000) return
+	lastPrune = now
+	for (const [userId, entry] of cache) {
+		if (!entry.inflight && now - entry.lastUsed > IDLE_MS) cache.delete(userId)
+	}
+}
 
 /**
  * Returns the user's cached result if it is younger than `maxAgeMs`, and joins an in-flight
  * fetch rather than starting another one.
  */
 export function getDeployments(userId: string, maxAgeMs: number): Promise<FetchResult> {
-	const entry = cache.get(userId) ?? {}
-	cache.set(userId, entry)
-	if (entry.result && Date.now() - entry.result.fetchedAt < maxAgeMs) return Promise.resolve(entry.result)
-	entry.inflight ??= fetchAllDeployments(userId)
-		.then((result) => (entry.result = result))
-		.finally(() => (entry.inflight = undefined))
-	return entry.inflight
+	const now = Date.now()
+	prune(now)
+	let entry = cache.get(userId)
+	if (!entry) cache.set(userId, (entry = { generation: 0, lastUsed: now }))
+	entry.lastUsed = now
+
+	if (entry.result && now - entry.result.fetchedAt < maxAgeMs) return Promise.resolve(entry.result)
+	if (entry.inflight) return entry.inflight
+
+	const e = entry
+	const generation = e.generation
+	const inflight = fetchAllDeployments(userId)
+		.then((result) => {
+			if (e.generation === generation) e.result = result
+			return result
+		})
+		.finally(() => {
+			if (e.inflight === inflight) e.inflight = undefined
+		})
+	e.inflight = inflight
+	return inflight
 }
 
-/** Forces the user's next `getDeployments` call to hit the providers, e.g. after an account change. */
+/**
+ * Forces the user's next `getDeployments` call to hit the providers, e.g. after an account change.
+ * A fetch already running is detached: nobody new joins it and its result isn't cached.
+ */
 export function invalidateDeployments(userId: string): void {
 	const entry = cache.get(userId)
-	if (entry) entry.result = undefined
+	if (!entry) return
+	entry.generation++
+	entry.result = undefined
+	entry.inflight = undefined
 }
 
 async function fetchAllDeployments(userId: string): Promise<FetchResult> {
@@ -61,9 +101,9 @@ async function fetchAllDeployments(userId: string): Promise<FetchResult> {
 	const tokens = await getTokens(userId)
 	const errors: ProviderError[] = []
 	const deployments: Deployment[] = []
-	const sources: [ProviderId, (token: string) => Promise<Deployment[]>][] = [
+	const sources: [ProviderId, (token: string) => Promise<{ deployments: Deployment[]; warnings?: string[] }>][] = [
 		['vercel', fetchVercelDeployments],
-		['railway', fetchRailwayDeployments]
+		['railway', async (token) => ({ deployments: await fetchRailwayDeployments(token) })]
 	]
 
 	await Promise.all(
@@ -71,7 +111,9 @@ async function fetchAllDeployments(userId: string): Promise<FetchResult> {
 			const token = tokens[provider]
 			if (!token) return
 			try {
-				deployments.push(...(await fetcher(token)))
+				const result = await fetcher(token)
+				deployments.push(...result.deployments)
+				for (const warning of result.warnings ?? []) errors.push({ provider, message: warning })
 			} catch (err) {
 				errors.push({ provider, message: message(err) })
 			}

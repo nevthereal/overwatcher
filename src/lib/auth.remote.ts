@@ -6,9 +6,19 @@ import { auth } from '#lib/server/auth.js'
 
 const message = (err: unknown) => (err instanceof Error ? err.message : String(err))
 
-/** Only same-site paths, so `?redirectTo=` can't send people elsewhere. */
+/**
+ * Only paths on this site, so `?redirectTo=` can't send people elsewhere. Resolving against a
+ * placeholder origin catches every form browsers treat as another host (`//x`, `/\x`, `https:x`).
+ */
 function safeRedirect(to: string | undefined) {
-	return to && to.startsWith('/') && !to.startsWith('//') ? to : '/'
+	if (!to) return '/'
+	const base = 'http://overwatcher.invalid'
+	try {
+		const url = new URL(to, base)
+		return url.origin === base ? url.pathname + url.search + url.hash : '/'
+	} catch {
+		return '/'
+	}
 }
 
 /** The signed-in user, or null. Only fields the UI needs. */
