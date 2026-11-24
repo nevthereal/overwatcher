@@ -7,6 +7,7 @@
 	import * as Sidebar from '#lib/components/ui/sidebar/index.js'
 	import { Skeleton } from '#lib/components/ui/skeleton/index.js'
 	import { Filters, setFilters } from '#lib/filters.svelte.js'
+	import { pollDeployments } from '#lib/poll-deployments.svelte.js'
 	import type { LayoutProps } from './$types'
 
 	let { children }: LayoutProps = $props()
@@ -15,6 +16,8 @@
 	setFilters(filters)
 
 	$effect(() => filters.save())
+
+	pollDeployments()
 </script>
 
 <Sidebar.Provider class="h-svh overflow-hidden">

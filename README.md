@@ -38,13 +38,15 @@ After changing `src/lib/server/db/schema.ts`, run `bun run db:generate` to write
 
 ## Deploying
 
-`bun run build` produces a Node server in `build/` (`@sveltejs/adapter-node`). Run `bun run db:migrate` against the production database, then start it with `node build` and these environment variables:
+Overwatcher deploys to [Vercel](https://vercel.com) with `@sveltejs/adapter-vercel`: import the repo, keep the SvelteKit preset, and leave Build Command and Output Directory on their defaults (the adapter writes Vercel's Build Output API to `.vercel/output`). Run `bun run db:migrate` against the production database once, and again after each new migration.
+
+Set these environment variables for Production (and Preview, if you use preview deployments). The build needs them too:
 
 | Variable | |
 | --- | --- |
-| `DATABASE_URL` | Neon connection string (pooled). `DATABASE_URL_UNPOOLED` is used for migrations if set. |
+| `DATABASE_URL` | Neon connection string (pooled). The Neon integration on Vercel sets it for you. |
 | `BETTER_AUTH_SECRET` | Random, at least 32 characters: `openssl rand -base64 32` |
-| `BETTER_AUTH_URL` / `ORIGIN` | The app's public URL, e.g. `https://overwatcher.example.com` |
+| `BETTER_AUTH_URL` | The app's public URL, e.g. `https://overwatcher.example.com`. If unset, better-auth uses the URL of each request and logs a warning; that also lets you sign in on preview deployments. |
 | `TOKEN_ENCRYPTION_KEY` | 32 random bytes, base64: `openssl rand -base64 32`. Losing it means everyone has to reconnect their accounts. |
 | `DISABLE_SIGNUP` | `1` to stop new sign-ups, e.g. once your own account exists |
 
@@ -55,6 +57,6 @@ The app validates these when it starts (`src/env.ts`) and refuses to run if one 
 Overwatcher is a SvelteKit 3 app ([async Svelte](https://svelte.dev/docs/svelte/await-expressions), [remote functions](https://svelte.dev/docs/kit/remote-functions), [shadcn-svelte](https://shadcn-svelte.com)) with [better-auth](https://better-auth.com) and [Drizzle](https://orm.drizzle.team) on Neon Postgres:
 
 - **Auth:** `src/lib/server/auth.ts` configures better-auth with email/password and the username plugin. `src/hooks.server.ts` loads the session into `locals` and sends signed-out visitors to `/login`. Sign-in, sign-up and sign-out are remote `form`s in `src/lib/auth.remote.ts`.
-- **Remote functions** in `src/lib/*.remote.ts` are the API. Each one that touches user data starts with `requireUser()` and only reads that user's rows. `getDeployments` is a `query.live` that polls Vercel and Railway on the server (every 10s while something is building, otherwise every 60s) and streams results to the page.
+- **Remote functions** in `src/lib/*.remote.ts` are the API. Each one that touches user data starts with `requireUser()` and only reads that user's rows. `getDeployments` is a plain `query` that the page refreshes every 10s while something is building, otherwise every 60s, and only while the tab is visible (`src/lib/poll-deployments.svelte.ts`). Short requests rather than a long-lived stream, so it fits serverless functions.
 - **Tokens:** `src/lib/server/store.ts` keeps one row per user and platform in the `connection` table. `src/lib/server/crypto.ts` encrypts them with AES-256-GCM, bound to their owner, so a ciphertext copied onto another user's row doesn't decrypt.
-- **Provider integrations** live in `src/lib/server/providers/`. Results are cached per user in `src/lib/server/deployments.ts`, so several open tabs share one poller.
+- **Provider integrations** live in `src/lib/server/providers/`. Results are cached per user for a few seconds in `src/lib/server/deployments.ts`, so several open tabs don't each hit the providers.

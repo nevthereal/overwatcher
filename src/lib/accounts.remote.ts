@@ -16,7 +16,7 @@ export const getConnections = query(async () => connectionStatuses(requireUser()
 function afterChange(userId: string) {
 	invalidateDeployments(userId)
 	void getConnections().refresh()
-	getDeployments().reconnect()
+	void getDeployments().refresh()
 }
 
 export const connectAccount = form(

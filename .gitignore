@@ -8,3 +8,4 @@ dist
 .env.*
 vite.config.ts.timestamp-*
 !.env.example
+.vercel
