@@ -5,13 +5,15 @@
 	import KeyRoundIcon from '@lucide/svelte/icons/key-round'
 	import LayersIcon from '@lucide/svelte/icons/layers'
 	import LoaderIcon from '@lucide/svelte/icons/loader'
-	import iconDark from '#lib/assets/icon-dark.png'
-	import iconLight from '#lib/assets/icon-light.png'
+	import LogOutIcon from '@lucide/svelte/icons/log-out'
+	import UserIcon from '@lucide/svelte/icons/user'
 	import * as Sidebar from '#lib/components/ui/sidebar/index.js'
 	import * as ToggleGroup from '#lib/components/ui/toggle-group/index.js'
+	import Logo from '#lib/components/logo.svelte'
 	import ProviderLogo from '#lib/components/provider-logo.svelte'
 	import StatusDot from '#lib/components/status-dot.svelte'
 	import { getConnections } from '#lib/accounts.remote.js'
+	import { getUser, signOut } from '#lib/auth.remote.js'
 	import { getDeployments } from '#lib/deployments.remote.js'
 	import { getFilters, projectKey, type EnvFilter, type ProviderFilter, type StatusFilter } from '#lib/filters.svelte.js'
 	import { STATE_LABEL, timeAgo } from '#lib/format.js'
@@ -19,10 +21,17 @@
 	import { isActive, type Deployment } from '#lib/types.js'
 
 	const filters = getFilters()
+	const sidebar = Sidebar.useSidebar()
 
 	// `.current` instead of `await`: the sidebar renders immediately and fills in when data arrives.
-	const deployments = $derived(getDeployments().current?.deployments ?? [])
-	const connections = $derived(getConnections().current ?? [])
+	// The queries are created once here, not inside `$derived`, so they stay subscribed.
+	const deploymentsQuery = getDeployments()
+	const connectionsQuery = getConnections()
+	const userQuery = getUser()
+
+	const deployments = $derived(deploymentsQuery.current?.deployments ?? [])
+	const connections = $derived(connectionsQuery.current ?? [])
+	const user = $derived(userQuery.current)
 
 	const scoped = $derived(deployments.filter((d) => filters.matches(d, true)))
 	const counts = $derived({
@@ -47,6 +56,7 @@
 
 	function select(apply: () => void) {
 		apply()
+		sidebar.setOpenMobile(false)
 		if (!onFeed) void goto('/')
 	}
 
@@ -57,11 +67,10 @@
 	]
 </script>
 
-<Sidebar.Root collapsible="none" class="h-svh border-r">
-	<Sidebar.Header class="drag-region pt-11">
+<Sidebar.Root>
+	<Sidebar.Header class="pt-3">
 		<div class="flex items-center gap-2 px-2 font-semibold">
-			<img src={iconLight} alt="" class="size-6 dark:hidden" />
-			<img src={iconDark} alt="" class="hidden size-6 dark:block" />
+			<Logo class="h-4 w-auto" />
 			Overwatcher
 		</div>
 	</Sidebar.Header>
@@ -151,7 +160,7 @@
 			<Sidebar.MenuItem>
 				<Sidebar.MenuButton isActive={page.url.pathname === '/accounts'}>
 					{#snippet child({ props })}
-						<a href="/accounts" {...props}>
+						<a href="/accounts" {...props} onclick={() => sidebar.setOpenMobile(false)}>
 							<KeyRoundIcon />
 							<span>Accounts</span>
 						</a>
@@ -166,6 +175,26 @@
 					{/each}
 				</Sidebar.MenuBadge>
 			</Sidebar.MenuItem>
+			{#if user}
+				<Sidebar.MenuItem>
+					<form
+						{...signOut.enhance(async ({ submit }) => {
+							await submit()
+							location.assign('/login')
+						})}
+					>
+						<Sidebar.MenuButton>
+							{#snippet child({ props })}
+								<button type="submit" {...props} title="Sign out of {user.email}" disabled={!!signOut.pending}>
+									<UserIcon />
+									<span class="min-w-0 flex-1 truncate">{user.name}</span>
+									<LogOutIcon class="text-muted-foreground" />
+								</button>
+							{/snippet}
+						</Sidebar.MenuButton>
+					</form>
+				</Sidebar.MenuItem>
+			{/if}
 		</Sidebar.Menu>
 	</Sidebar.Footer>
 </Sidebar.Root>

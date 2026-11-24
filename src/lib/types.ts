@@ -59,6 +59,8 @@ export interface ConnectionStatus {
   connected: boolean
   /** Display name of the account the token belongs to. */
   account?: string
+  /** Last four characters of the token. */
+  tokenHint?: string
 }
 
 export interface ProviderError {
@@ -73,33 +75,6 @@ export interface FetchResult {
 }
 
 export const isActive = (s: DeploymentState) => s === 'queued' || s === 'building'
-
-/** One row in the macOS menu bar menu. Mirrored in electron/menu-bar.ts. */
-export interface MenuBarItem {
-  key: string
-  provider: 'vercel' | 'railway'
-  /** "project" or "project / service" */
-  name: string
-  environment: string
-  isProduction: boolean
-  state: DeploymentState
-  createdAt: number
-  message?: string
-  branch?: string
-  sha?: string
-  commitUrl?: string
-  pr?: PullRequestInfo
-  url?: string
-  dashboardUrl?: string
-}
-
-export interface MenuBarSummary {
-  connected: boolean
-  fetchedAt: number
-  errors: ProviderError[]
-  /** Newest deployment per project, service and environment, newest first. */
-  targets: MenuBarItem[]
-}
 
 /** The Railway service name, unless it just repeats the project name. */
 export const serviceLabel = (d: Pick<Deployment, 'project' | 'service'>) =>

@@ -1,18 +1,29 @@
+import { redirect } from '@sveltejs/kit'
 import type { Handle } from '@sveltejs/kit/hooks'
+import { svelteKitHandler } from 'better-auth/svelte-kit'
+import { building } from '$app/env'
+import { auth } from '#lib/server/auth.js'
 
-export const SESSION_COOKIE = 'overwatcher_session'
+/** Pages you can open without an account. */
+const AUTH_PAGES = ['/login', '/signup']
 
-/**
- * The server listens on 127.0.0.1 only, but other local processes (or a web page using DNS
- * rebinding) could still reach it. Only the Electron window has the per-launch session cookie.
- */
 export const handle: Handle = async ({ event, resolve }) => {
-	const host = globalThis.__overwatcherHost
-	if (!host) {
-		return new Response('Overwatcher must be started through its Electron shell (bun run dev).', { status: 503 })
+	const session = building ? null : await auth.api.getSession({ headers: event.request.headers })
+	event.locals.user = session?.user
+	event.locals.session = session?.session
+
+	// Remote functions check the session themselves (`requireUser`) and answer 401, and
+	// /api/auth/* is better-auth's own API. Everything else is a page that needs a signed-in user.
+	const { pathname, search } = event.url
+	const isPage = !event.isRemoteRequest && !pathname.startsWith('/api/auth/')
+	if (isPage && !building) {
+		const onAuthPage = AUTH_PAGES.includes(pathname)
+		if (!event.locals.user && !onAuthPage) {
+			const redirectTo = pathname === '/' ? '' : `?redirectTo=${encodeURIComponent(pathname + search)}`
+			redirect(303, `/login${redirectTo}`)
+		}
+		if (event.locals.user && onAuthPage) redirect(303, '/')
 	}
-	if (event.cookies.get(SESSION_COOKIE) !== host.secret) {
-		return new Response('Forbidden', { status: 403 })
-	}
-	return resolve(event)
+
+	return svelteKitHandler({ event, resolve, auth, building })
 }

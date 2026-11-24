@@ -23,7 +23,6 @@
 
 <script lang="ts">
 	import ExternalLinkIcon from '@lucide/svelte/icons/external-link'
-	import TerminalIcon from '@lucide/svelte/icons/terminal'
 	import { toast } from 'svelte-sonner'
 	import { Badge } from '#lib/components/ui/badge/index.js'
 	import { Button } from '#lib/components/ui/button/index.js'
@@ -32,7 +31,7 @@
 	import { Spinner } from '#lib/components/ui/spinner/index.js'
 	import ProviderLogo from '#lib/components/provider-logo.svelte'
 	import StatusDot from '#lib/components/status-dot.svelte'
-	import { connectAccount, connectGithubFromCli, disconnectAccount } from '#lib/accounts.remote.js'
+	import { connectAccount, disconnectAccount } from '#lib/accounts.remote.js'
 	import type { ConnectionStatus } from '#lib/types.js'
 
 	let { status }: { status: ConnectionStatus } = $props()
@@ -40,20 +39,6 @@
 	const info = $derived(INFO[status.provider])
 	const connect = $derived(connectAccount.for(status.provider))
 	const disconnect = $derived(disconnectAccount.for(status.provider))
-
-	let cliPending = $state(false)
-
-	async function useGithubCli() {
-		cliPending = true
-		try {
-			const account = await connectGithubFromCli()
-			toast.success(`Connected GitHub as ${account}`)
-		} catch (err) {
-			toast.error(err instanceof Error ? err.message : String(err))
-		} finally {
-			cliPending = false
-		}
-	}
 </script>
 
 <Card.Root>
@@ -80,16 +65,19 @@
 
 	<Card.Content>
 		{#if status.connected}
-			<form {...disconnect}>
+			<form {...disconnect} class="flex items-center gap-3">
 				<input {...disconnect.fields.provider.as('hidden', status.provider)} />
 				<Button type="submit" variant="outline" size="sm" disabled={!!disconnect.pending}>Disconnect</Button>
+				{#if status.tokenHint}
+					<span class="font-mono text-xs text-muted-foreground" title="Last characters of the stored token">…{status.tokenHint}</span>
+				{/if}
 			</form>
 			{#each disconnect.fields.allIssues() ?? [] as issue (issue.message)}
 				<p class="mt-2 text-sm text-destructive">{issue.message}</p>
 			{/each}
 		{:else}
 			<form
-				class="flex gap-2"
+				class="flex flex-col gap-2 sm:flex-row"
 				{...connect.enhance(async ({ element, submit }) => {
 					if (await submit()) {
 						element.reset()
@@ -99,7 +87,7 @@
 			>
 				<input {...connect.fields.provider.as('hidden', status.provider)} />
 				<Input
-					{...connect.fields.token.as('password')}
+					{...connect.fields._token.as('password')}
 					placeholder="{info.name} token"
 					autocomplete="off"
 					spellcheck={false}
@@ -108,11 +96,6 @@
 				<Button type="submit" disabled={!!connect.pending}>
 					{#if connect.pending}<Spinner />Checking…{:else}Connect{/if}
 				</Button>
-				{#if status.provider === 'github'}
-					<Button type="button" variant="outline" disabled={cliPending} onclick={useGithubCli} title="Uses `gh auth token`">
-						{#if cliPending}<Spinner />{:else}<TerminalIcon />{/if}Use GitHub CLI
-					</Button>
-				{/if}
 			</form>
 			{#each connect.fields.allIssues() ?? [] as issue (issue.message)}
 				<p class="mt-2 text-sm text-destructive select-text">{issue.message}</p>

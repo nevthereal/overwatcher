@@ -1,7 +1,8 @@
+import { OVERWATCHER_DEMO } from '$app/env/private'
 import type { ConnectionStatus, Deployment, FetchResult } from '#lib/types.js'
 
-/** Fake data for working on the UI without real tokens: `OVERWATCHER_DEMO=1 bun run dev`. */
-export const DEMO = process.env.OVERWATCHER_DEMO === '1'
+/** Fake data for working on the UI without real tokens: `bun run demo`. */
+export const DEMO = OVERWATCHER_DEMO
 
 export const demoConnections: ConnectionStatus[] = [
   { provider: 'vercel', connected: true, account: 'acme' },

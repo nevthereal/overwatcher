@@ -1,54 +1,56 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { and, eq } from 'drizzle-orm'
 import type { ProviderId } from '#lib/types.js'
-import { host } from './host.js'
+import { decrypt, encrypt } from './crypto.js'
+import { db } from './db/index.js'
+import { connection } from './db/schema.js'
 
-interface StoredCredential {
-	/** Token encrypted with the OS keychain, base64. */
-	token: string
-	account?: string
+/** Ties a ciphertext to its owner and provider, see `crypto.ts`. */
+const aad = (userId: string, provider: ProviderId) => `connection:${userId}:${provider}`
+
+export interface StoredConnection {
+	provider: ProviderId
+	accountName: string | null
+	tokenHint: string | null
 }
 
-type CredentialFile = Partial<Record<ProviderId, StoredCredential>>
+/** The user's connections, without their tokens. */
+export function listConnections(userId: string): Promise<StoredConnection[]> {
+	return db
+		.select({ provider: connection.provider, accountName: connection.accountName, tokenHint: connection.tokenHint })
+		.from(connection)
+		.where(eq(connection.userId, userId))
+}
 
-const file = () => join(host().dataDir, 'credentials.json')
+/** Decrypted tokens by provider. Server-only: never return these to the browser. */
+export async function getTokens(userId: string): Promise<Partial<Record<ProviderId, string>>> {
+	const rows = await db
+		.select({ provider: connection.provider, token: connection.token })
+		.from(connection)
+		.where(eq(connection.userId, userId))
 
-function readAll(): CredentialFile {
-	try {
-		if (!existsSync(file())) return {}
-		return JSON.parse(readFileSync(file(), 'utf8')) as CredentialFile
-	} catch {
-		return {}
+	const tokens: Partial<Record<ProviderId, string>> = {}
+	for (const row of rows) {
+		try {
+			tokens[row.provider] = decrypt(row.token, aad(userId, row.provider))
+		} catch (err) {
+			console.error(`Could not decrypt the ${row.provider} token of user ${userId}:`, err)
+		}
 	}
+	return tokens
 }
 
-function writeAll(data: CredentialFile): void {
-	mkdirSync(host().dataDir, { recursive: true })
-	writeFileSync(file(), JSON.stringify(data, null, 2), { mode: 0o600 })
-}
-
-export function getToken(provider: ProviderId): string | undefined {
-	const entry = readAll()[provider]
-	if (!entry) return undefined
-	try {
-		return host().decrypt(entry.token)
-	} catch {
-		return undefined
+export async function saveConnection(userId: string, provider: ProviderId, token: string, accountName: string): Promise<void> {
+	const values = {
+		token: encrypt(token, aad(userId, provider)),
+		tokenHint: token.slice(-4),
+		accountName
 	}
+	await db
+		.insert(connection)
+		.values({ id: crypto.randomUUID(), userId, provider, ...values })
+		.onConflictDoUpdate({ target: [connection.userId, connection.provider], set: values })
 }
 
-export function getAccount(provider: ProviderId): string | undefined {
-	return readAll()[provider]?.account
-}
-
-export function saveCredential(provider: ProviderId, token: string, account?: string): void {
-	const data = readAll()
-	data[provider] = { token: host().encrypt(token), account }
-	writeAll(data)
-}
-
-export function removeCredential(provider: ProviderId): void {
-	const data = readAll()
-	delete data[provider]
-	writeAll(data)
+export async function removeConnection(userId: string, provider: ProviderId): Promise<void> {
+	await db.delete(connection).where(and(eq(connection.userId, userId), eq(connection.provider, provider)))
 }

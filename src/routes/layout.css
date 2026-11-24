@@ -127,11 +127,3 @@
 		@apply font-sans;
 	}
 }
-
-/* Electron: let parts of the UI drag the frameless window, but keep controls clickable. */
-.drag-region {
-	-webkit-app-region: drag;
-}
-.drag-region :is(button, a, input, label, [role='button'], [role='switch']) {
-	-webkit-app-region: no-drag;
-}

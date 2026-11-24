@@ -10,6 +10,7 @@
 	import { Label } from '#lib/components/ui/label/index.js'
 	import { Switch } from '#lib/components/ui/switch/index.js'
 	import DeploymentRow from '#lib/components/deployment-row.svelte'
+	import PageHeader from '#lib/components/page-header.svelte'
 	import { getConnections } from '#lib/accounts.remote.js'
 	import { getDeployments, refreshDeployments } from '#lib/deployments.remote.js'
 	import { getFilters, groupByDay } from '#lib/filters.svelte.js'
@@ -55,26 +56,27 @@
 </script>
 
 <svelte:window {onfocus} />
+<svelte:document onvisibilitychange={() => document.visibilityState === 'visible' && onfocus()} />
 
-<header class="drag-region flex h-13 shrink-0 items-center gap-3 border-b px-4">
+<PageHeader>
 	<InputGroup.Root class="max-w-sm">
 		<InputGroup.Addon><SearchIcon /></InputGroup.Addon>
 		<InputGroup.Input placeholder="Search commits, branches, PRs, projects…" bind:value={filters.search} />
 	</InputGroup.Root>
 	<div class="flex items-center gap-2">
 		<Switch id="latest-only" bind:checked={filters.latestOnly} />
-		<Label for="latest-only" class="whitespace-nowrap text-muted-foreground" title="Only the newest deployment per project, service and environment">
+		<Label for="latest-only" class="hidden whitespace-nowrap text-muted-foreground sm:inline" title="Only the newest deployment per project, service and environment">
 			Latest only
 		</Label>
 	</div>
 	<div class="flex-1"></div>
 	{#if hasPlatform}
-		<span class="text-xs whitespace-nowrap text-muted-foreground">Updated {timeAgo(result.fetchedAt, now())}</span>
+		<span class="hidden text-xs whitespace-nowrap text-muted-foreground sm:inline">Updated {timeAgo(result.fetchedAt, now())}</span>
 	{/if}
 	<Button variant="outline" size="icon-sm" onclick={refresh} disabled={refreshing || !hasPlatform} title="Refresh">
 		<RefreshCwIcon class={[refreshing && 'animate-spin']} />
 	</Button>
-</header>
+</PageHeader>
 
 <div class="min-h-0 flex-1 overflow-y-auto px-4 pb-8">
 	{#each result.errors as e (e.provider)}
@@ -91,7 +93,7 @@
 				<Empty.Title>Connect your deployment platforms</Empty.Title>
 				<Empty.Description>
 					Add a Vercel or Railway access token to see your latest deployments, with the commit and pull request
-					behind each one. Tokens stay on this machine, encrypted with your system keychain.
+					behind each one. Tokens are stored encrypted and only ever sent to the platform they belong to.
 				</Empty.Description>
 			</Empty.Header>
 			<Empty.Content>

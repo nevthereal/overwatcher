@@ -1,10 +1,9 @@
 import type { ConnectionStatus, Deployment, FetchResult, ProviderError, ProviderId } from '#lib/types.js'
-import { demoConnections, demoDeployments } from './demo.js'
-import { host } from './host.js'
+import { DEMO, demoConnections, demoDeployments } from './demo.js'
 import { enrichWithGithub, verifyGithub } from './providers/github.js'
 import { fetchRailwayDeployments, verifyRailway } from './providers/railway.js'
 import { fetchVercelDeployments, verifyVercel } from './providers/vercel.js'
-import { getAccount, getToken, saveCredential } from './store.js'
+import { getTokens, listConnections, saveConnection } from './store.js'
 
 export const PROVIDERS: ProviderId[] = ['vercel', 'railway', 'github']
 
@@ -14,47 +13,52 @@ const verifiers: Record<ProviderId, (token: string) => Promise<string>> = {
 	github: verifyGithub
 }
 
-export function connectionStatuses(): ConnectionStatus[] {
-	if (host().demo) return demoConnections
+/** Every provider with whether the user connected it. Tokens are not included. */
+export async function connectionStatuses(userId: string): Promise<ConnectionStatus[]> {
+	if (DEMO) return demoConnections
+	const stored = await listConnections(userId)
 	return PROVIDERS.map((provider) => {
-		const connected = !!getToken(provider)
-		return { provider, connected, account: connected ? getAccount(provider) : undefined }
+		const row = stored.find((c) => c.provider === provider)
+		return { provider, connected: !!row, account: row?.accountName ?? undefined, tokenHint: row?.tokenHint ?? undefined }
 	})
 }
 
-/** Verifies the token against the provider, then stores it. Returns the account name. */
-export async function connect(provider: ProviderId, token: string): Promise<string> {
+/** Verifies the token against the provider, then stores it encrypted. Returns the account name. */
+export async function connect(userId: string, provider: ProviderId, token: string): Promise<string> {
 	const account = await verifiers[provider](token)
-	saveCredential(provider, token, account)
+	await saveConnection(userId, provider, token, account)
 	return account
 }
 
 const message = (err: unknown) => (err instanceof Error ? err.message : String(err))
 
-let cached: FetchResult | undefined
-let inflight: Promise<FetchResult> | undefined
+/** Per user: every open tab of that user shares one poller, and users never share results. */
+const cache = new Map<string, { result?: FetchResult; inflight?: Promise<FetchResult> }>()
 
 /**
- * Shared by the window's live query and the menu bar, so both never poll the providers
- * separately. Returns the cached result if it is younger than `maxAgeMs`, and joins an
- * in-flight fetch rather than starting another one.
+ * Returns the user's cached result if it is younger than `maxAgeMs`, and joins an in-flight
+ * fetch rather than starting another one.
  */
-export function getDeployments(maxAgeMs: number): Promise<FetchResult> {
-	if (cached && Date.now() - cached.fetchedAt < maxAgeMs) return Promise.resolve(cached)
-	inflight ??= fetchAllDeployments()
-		.then((result) => (cached = result))
-		.finally(() => (inflight = undefined))
-	return inflight
+export function getDeployments(userId: string, maxAgeMs: number): Promise<FetchResult> {
+	const entry = cache.get(userId) ?? {}
+	cache.set(userId, entry)
+	if (entry.result && Date.now() - entry.result.fetchedAt < maxAgeMs) return Promise.resolve(entry.result)
+	entry.inflight ??= fetchAllDeployments(userId)
+		.then((result) => (entry.result = result))
+		.finally(() => (entry.inflight = undefined))
+	return entry.inflight
 }
 
-/** Forces the next `getDeployments` call to hit the providers, e.g. after an account change. */
-export function invalidateDeployments(): void {
-	cached = undefined
+/** Forces the user's next `getDeployments` call to hit the providers, e.g. after an account change. */
+export function invalidateDeployments(userId: string): void {
+	const entry = cache.get(userId)
+	if (entry) entry.result = undefined
 }
 
-async function fetchAllDeployments(): Promise<FetchResult> {
-	if (host().demo) return demoDeployments()
+async function fetchAllDeployments(userId: string): Promise<FetchResult> {
+	if (DEMO) return demoDeployments()
 
+	const tokens = await getTokens(userId)
 	const errors: ProviderError[] = []
 	const deployments: Deployment[] = []
 	const sources: [ProviderId, (token: string) => Promise<Deployment[]>][] = [
@@ -64,7 +68,7 @@ async function fetchAllDeployments(): Promise<FetchResult> {
 
 	await Promise.all(
 		sources.map(async ([provider, fetcher]) => {
-			const token = getToken(provider)
+			const token = tokens[provider]
 			if (!token) return
 			try {
 				deployments.push(...(await fetcher(token)))
@@ -76,10 +80,9 @@ async function fetchAllDeployments(): Promise<FetchResult> {
 
 	deployments.sort((a, b) => b.createdAt - a.createdAt)
 
-	const ghToken = getToken('github')
-	if (ghToken) {
+	if (tokens.github) {
 		try {
-			await enrichWithGithub(ghToken, deployments)
+			await enrichWithGithub(tokens.github, deployments)
 		} catch (err) {
 			errors.push({ provider: 'github', message: message(err) })
 		}

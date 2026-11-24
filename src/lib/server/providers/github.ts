@@ -1,5 +1,4 @@
-import { execFile } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { createHash } from 'node:crypto'
 import type { Deployment, PullRequestInfo } from '#lib/types.js'
 
 const API = 'https://api.github.com'
@@ -32,19 +31,6 @@ export async function verifyGithub(token: string): Promise<string> {
   return user.login
 }
 
-/** Reads the token from an installed and logged-in GitHub CLI. */
-export function tokenFromGhCli(): Promise<string> {
-  const candidates = ['/opt/homebrew/bin/gh', '/usr/local/bin/gh', '/usr/bin/gh']
-  const bin = candidates.find((p) => existsSync(p)) ?? 'gh'
-  return new Promise((resolve, reject) => {
-    execFile(bin, ['auth', 'token'], { timeout: 5000 }, (err, stdout) => {
-      const token = stdout?.trim()
-      if (err || !token) reject(new Error('Could not read a token from the GitHub CLI. Run `gh auth login` first.'))
-      else resolve(token)
-    })
-  })
-}
-
 const toPr = (p: GhPull): PullRequestInfo => ({
   number: p.number,
   title: p.title,
@@ -52,26 +38,40 @@ const toPr = (p: GhPull): PullRequestInfo => ({
   state: p.merged_at ? 'merged' : p.state
 })
 
-// Caches live for the app session; commits and PR titles rarely change.
-const commitPrCache = new Map<string, PullRequestInfo | null>()
-const prCache = new Map<string, PullRequestInfo | null>()
+const TTL_MS = 10 * 60_000
+const MAX_ENTRIES = 10_000
 
-async function prForCommit(token: string, repo: string, sha: string): Promise<PullRequestInfo | null> {
-  const key = `${repo}@${sha}`
-  if (commitPrCache.has(key)) return commitPrCache.get(key)!
-  const pulls = await gh<GhPull[]>(token, `/repos/${repo}/commits/${sha}/pulls`)
-  const pr = pulls && pulls.length > 0 ? toPr(pulls[0]) : null
-  commitPrCache.set(key, pr)
-  return pr
+/**
+ * PR lookups, keyed per token: what one user's token can see in a private repo must not show
+ * up for another user. Entries expire so PR state (open → merged) stays reasonably fresh.
+ */
+const cache = new Map<string, { value: PullRequestInfo | null; at: number }>()
+
+const tokenKey = (token: string) => createHash('sha256').update(token).digest('base64url').slice(0, 16)
+
+async function cached(key: string, load: () => Promise<PullRequestInfo | null>): Promise<PullRequestInfo | null> {
+  const hit = cache.get(key)
+  if (hit && Date.now() - hit.at < TTL_MS) return hit.value
+  const value = await load()
+  cache.delete(key)
+  cache.set(key, { value, at: Date.now() })
+  // Maps iterate in insertion order, so the first key is the oldest entry.
+  if (cache.size > MAX_ENTRIES) cache.delete(cache.keys().next().value!)
+  return value
 }
 
-async function prDetails(token: string, repo: string, n: number): Promise<PullRequestInfo | null> {
-  const key = `${repo}#${n}`
-  if (prCache.has(key)) return prCache.get(key)!
-  const pull = await gh<GhPull>(token, `/repos/${repo}/pulls/${n}`)
-  const pr = pull ? toPr(pull) : null
-  prCache.set(key, pr)
-  return pr
+function prForCommit(token: string, repo: string, sha: string): Promise<PullRequestInfo | null> {
+  return cached(`${tokenKey(token)}:${repo}@${sha}`, async () => {
+    const pulls = await gh<GhPull[]>(token, `/repos/${repo}/commits/${sha}/pulls`)
+    return pulls && pulls.length > 0 ? toPr(pulls[0]) : null
+  })
+}
+
+function prDetails(token: string, repo: string, n: number): Promise<PullRequestInfo | null> {
+  return cached(`${tokenKey(token)}:${repo}#${n}`, async () => {
+    const pull = await gh<GhPull>(token, `/repos/${repo}/pulls/${n}`)
+    return pull ? toPr(pull) : null
+  })
 }
 
 async function pool<T>(items: T[], fn: (item: T) => Promise<void>): Promise<void> {
